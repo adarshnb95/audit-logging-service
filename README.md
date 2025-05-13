@@ -44,58 +44,69 @@ This service provides:
    ```
 
 2. **Install dependencies**
-   
-   `npm install`
 
+    ```bash
+    npm install
+    ```
 
-3. **Configure environment variables**
+3. **Configure environment**
 
-Create a .env file in the project root:
-   
-   `PORT=3000` and `MONGODB_URI=<your MongoDB URI>`
+   Create a `.env` file in the project root:
+
+    ```env
+    PORT=3000
+    MONGODB_URI=<your MongoDB Atlas connection string>
+    ```
 
 4. **Start the service**
 
-   `npm start`
+    ```bash
+    npm start
+    ```
 
-The server listens on http://localhost:3000.
+   The service listens on `http://localhost:3000`.
 
+---
 
-5. **Ingest event (Day 2)**
+## Usage
 
-   ```curl
-   curl -X POST http://localhost:3000/audit \
+1. **Ingest an audit event**
+
+    ```bash
+    curl.exe -X POST "http://localhost:3000/audit" \
       -H "Content-Type: application/json" \
-      -d '{
-         "timestamp":"2025-05-12T12:00:00Z",
-         "service":"orders",
-         "eventType":"CREATE_ORDER",
-         "userId":"user123",
-         "payload":{ "orderId": "abc123", "amount": 49.99 }
-      }'
+      -d "@payload.json"
+    ```
 
-6. **Query logs (Day 2)**
+   **Response**:
 
-Check with `curl "http://localhost:3000/logs?service=orders&page=1&limit=20"`
+    ```json
+    { "_id": "<generated_document_id>" }
+    ```
 
-7. Build & run container
+2. **Query logs** (Day 3)
+
+    ```bash
+    curl "http://localhost:3000/logs?service=orders&page=1&limit=20"
+    ```
+
+---
+
+## Docker
+
+**Build & run container**
 
    ```bash
+   # Build the Docker image
    docker build -t audit-logging-service .
-   docker run -p 3000:3000 --env-file .env audit-logging-service
-   Lint & Format
+   ```
 
-8. Code quality
+# Run the container (reads your .env file)
+docker run -p 3000:3000 --env-file .env audit-logging-service
+
+Health Check
 
    ```bash
-   npm run lint    # ESLint checks
-   npm run format  # Prettier auto-format
-
-Verify the service is alive: using `curl http://localhost:3000/health`
-# → { "status": "ok" }
-Next Steps (Day 2)
-Implement POST /audit → MongoDB Atlas
-
-Add JSON schema validation
-
-Build GET /logs endpoint with pagination & filters
+   curl http://localhost:3000/health
+   # → { "status": "ok" }
+   ```
