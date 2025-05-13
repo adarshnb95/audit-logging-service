@@ -22,7 +22,8 @@
   "homepage": "https://github.com/adarshnb95/audit-logging-service#readme",
   "dependencies": {
     "dotenv": "^16.5.0",
-    "express": "^5.1.0"
+    "express": "^5.1.0",
+    "mongodb": "^6.16.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.26.0",

@@ -1,0 +1,8 @@
+{
+    "timestamp": "2025-05-12T12:00:00Z",
+    "service": "test",
+    "eventType": "PING",
+    "userId": "you",
+    "payload": {}
+  }
+  
