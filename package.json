@@ -1,0 +1,35 @@
+{
+  "name": "audit-logging-service",
+  "version": "1.0.0",
+  "description": "Node.js/Express audit‐logging microservice",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "lint": "eslint .",
+    "format": "prettier --write ."
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/adarshnb95/audit-logging-service.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/adarshnb95/audit-logging-service/issues"
+  },
+  "homepage": "https://github.com/adarshnb95/audit-logging-service#readme",
+  "dependencies": {
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.26.0",
+    "eslint": "^8.57.1",
+    "eslint-config-prettier": "^8.10.0",
+    "eslint-plugin-prettier": "^4.2.1",
+    "globals": "^16.1.0",
+    "prettier": "^2.8.8"
+  }
+}
