@@ -70,7 +70,7 @@ This service provides:
 
 ## Usage
 
-1. **Ingest an audit event**
+**Ingest an audit event**
 
     ```bash
     curl.exe -X POST "http://localhost:3000/audit" \
@@ -78,7 +78,7 @@ This service provides:
       -d "@payload.json"
     ```
 
-   **Response**:
+**Response**:
 
     ```json
     { "_id": "<generated_document_id>" }
@@ -86,9 +86,22 @@ This service provides:
 
 ## Query logs
 
+Examples:
+
     ```bash
     curl "http://localhost:3000/logs?service=orders&page=1&limit=20"
+
+   # Page 1 of 5 logs
+   curl "http://localhost:3000/logs?page=1&limit=5"
+
+   # Only events from service "orders"
+   curl "http://localhost:3000/logs?service=orders"
+
+   # Date-range filter
+   curl "http://localhost:3000/logs?start=2025-05-10T00:00:00Z&end=2025-05-12T23:59:59Z"
+
     ```
+
 
    **Query params:**
 
@@ -111,6 +124,11 @@ This service provides:
    ```bash
    # Build the Docker image
    docker build -t audit-logging-service .
+   ```
+
+   ```bash
+   # Build & run service + ES
+   docker-compose up --build
    ```
 
 # Run the container (reads your .env file)

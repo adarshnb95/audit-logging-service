@@ -21,6 +21,7 @@
   },
   "homepage": "https://github.com/adarshnb95/audit-logging-service#readme",
   "dependencies": {
+    "@elastic/elasticsearch": "^9.0.1",
     "dotenv": "^16.5.0",
     "express": "^5.1.0",
     "mongodb": "^6.16.0"
