@@ -9,10 +9,10 @@ A Node.js/Express microservice for ingesting, storing, and notifying on audit ev
 2. [Prerequisites](#prerequisites)  
 3. [Setup](#setup)  
 4. [Usage](#usage)  
-5. [Docker](#docker)  
+5. [Query Logs](#querylogs)
+6. [Docker](#docker)  
 6. [Lint & Format](#lint--format)  
 7. [Health Check](#health-check)  
-8. [Next Steps (Day 2)](#next-steps-day-2)
 
 ---
 
@@ -84,11 +84,23 @@ This service provides:
     { "_id": "<generated_document_id>" }
     ```
 
-2. **Query logs** (Day 3)
+## Query logs
 
     ```bash
     curl "http://localhost:3000/logs?service=orders&page=1&limit=20"
     ```
+
+   **Query params:**
+
+   **`service`** – (optional) filter by service name
+
+   **`eventType`** – (optional) filter by event type
+
+   **`start`/`end`** – (optional) ISO date range
+
+   **`page`** – page number (default: 1)
+
+   **`limit`** – page size (default: 20)
 
 ---
 
