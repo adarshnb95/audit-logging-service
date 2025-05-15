@@ -1,0 +1,12 @@
+{
+    "mappings": {
+      "properties": {
+        "timestamp":   { "type": "date"    },
+        "service":     { "type": "keyword" },
+        "eventType":   { "type": "keyword" },
+        "userId":      { "type": "keyword" },
+        "payload":     { "type": "object"  }
+      }
+    }
+  }
+  

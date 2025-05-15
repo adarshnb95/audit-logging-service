@@ -11,7 +11,8 @@ A Node.js/Express microservice for ingesting, storing, and notifying on audit ev
 4. [Usage](#usage)  
 5. [Query Logs](#querylogs)
 6. [Docker](#docker)  
-6. [Lint & Format](#lint--format)  
+7. [Search Logs](#search-logs)
+8. [Lint & Format](#lint--format)  
 7. [Health Check](#health-check)  
 
 ---
@@ -20,8 +21,8 @@ A Node.js/Express microservice for ingesting, storing, and notifying on audit ev
 
 This service provides:
 
-- **`POST /audit`** (coming Day 2): Ingest audit events as JSON.  
-- **`GET /logs`** (coming Day 2): Query stored events with pagination and filters.  
+- **`POST /audit`** : Ingest audit events as JSON.  
+- **`GET /logs`** : Query stored events with pagination and filters.  
 - **`GET /health`**: Liveness/readiness check.
 
 ---
@@ -30,7 +31,7 @@ This service provides:
 
 - Node.js v16+ & npm  
 - Docker Desktop (optional)  
-- MongoDB Atlas URI (for Day 2)
+- MongoDB Atlas URI
 
 ---
 
@@ -86,21 +87,26 @@ This service provides:
 
 ## Query logs
 
-Examples:
+**Examples:**
 
     ```bash
     curl "http://localhost:3000/logs?service=orders&page=1&limit=20"
-
-   # Page 1 of 5 logs
-   curl "http://localhost:3000/logs?page=1&limit=5"
-
-   # Only events from service "orders"
-   curl "http://localhost:3000/logs?service=orders"
-
-   # Date-range filter
-   curl "http://localhost:3000/logs?start=2025-05-10T00:00:00Z&end=2025-05-12T23:59:59Z"
-
     ```
+
+   Page 1 of 5 logs
+   ```bash
+   curl "http://localhost:3000/logs?page=1&limit=5"
+   ```
+
+   Only events from service "orders"
+   ```bash
+   curl "http://localhost:3000/logs?service=orders"
+   ```
+
+   Date-range filter
+   ```bash
+   curl "http://localhost:3000/logs?start=2025-05-10T00:00:00Z&end=2025-05-12T23:59:59Z"
+   ```
 
 
    **Query params:**
@@ -131,6 +137,8 @@ Examples:
    docker-compose up --build
    ```
 
+---
+
 # Run the container (reads your .env file)
 docker run -p 3000:3000 --env-file .env audit-logging-service
 
@@ -140,3 +148,43 @@ Health Check
    curl http://localhost:3000/health
    # → { "status": "ok" }
    ```
+---
+
+## Search logs
+
+```bash
+curl "http://localhost:3000/logs/search?q=order&service=orders&page=1&limit=10"
+```
+Query params:
+
+**`q`** – (optional) full-text search string
+
+**`service`** – (optional) exact service filter
+
+**`eventType`** – (optional) exact event type filter
+
+**`start`**/**`end`** – (optional) ISO date range
+
+**`page`** – page number (default: 1)
+
+**`limit`** – page size (default: 20)
+
+```bash
+curl.exe "http://localhost:3000/logs/search?q=test&service=test&page=1&limit=5"
+```
+## Kafka Ingestion
+
+1. Start Zookeeper & Kafka via Docker Compose:
+   ```bash
+   docker-compose up -d zookeeper kafka
+
+2. Produce an audit event:
+   echo '{"timestamp":"…","service":"…","eventType":"…","userId":"…","payload":{}}' \
+  | docker exec -i kafka \
+      /opt/bitnami/kafka/bin/kafka-console-producer.sh \
+        --bootstrap-server localhost:9092 \
+        --topic audit-events
+
+3. Search it:
+   curl "http://localhost:3000/logs/search?q=<yourEventType>"
+
