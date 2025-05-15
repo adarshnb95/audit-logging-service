@@ -1,4 +1,5 @@
 version: '3.8'
+
 services:
   app:
     build: .
@@ -8,13 +9,42 @@ services:
       - .env
     depends_on:
       - es
+      - kafka
 
   es:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.8.2
-    container_name: es
     environment:
-      - discovery.type=single-node
-      - xpack.security.enabled=false
-      - xpack.security.http.ssl.enabled=false
+      discovery.type: single-node
+      xpack.security.enabled: 'false'
+      xpack.security.http.ssl.enabled: 'false'
     ports:
       - '9200:9200'
+
+  zookeeper:
+    image: bitnami/zookeeper:latest
+    environment:
+      ALLOW_ANONYMOUS_LOGIN: 'yes'
+    ports:
+      - '2181:2181'
+
+  kafka:
+    image: bitnami/kafka:latest
+    container_name: kafka
+    environment:
+      # Enable plaintext listener (dev only)
+      - ALLOW_PLAINTEXT_LISTENER=yes
+
+      # KRaft (no ZooKeeper) single-node config:
+      - KAFKA_CFG_PROCESS_ROLES=broker,controller
+      - KAFKA_CFG_NODE_ID=1
+      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@kafka:9093
+
+      # Listener definitions
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://localhost:9092
+
+    ports:
+      - "9092:9092"
+      - "9093:9093"

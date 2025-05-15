@@ -2,13 +2,22 @@ import express from 'express';
 import dotenv from 'dotenv';
 import { MongoClient } from 'mongodb';
 import { Client as ESClient } from '@elastic/elasticsearch';
+import { Kafka } from 'kafkajs';
 
 dotenv.config();
 const app = express();
 app.use(express.json());
 
 const mongoClient = new MongoClient(process.env.MONGODB_URI);
-const esClient = new ESClient({ node: process.env.ES_NODE || 'http://localhost:9200' });
+const esClient = new ESClient({ node: process.env.ES_NODE || 'http://localhost:9200',
+  headers: {
+    accept: 'application/vnd.elasticsearch+json;compatible-with=8'
+  },
+  // turn off sniffing if you haven’t already
+  sniffOnStart: false,
+  sniffOnConnectionFault: false,
+  sniffInterval: false
+  });
 
 async function start() {
   try {
@@ -17,11 +26,48 @@ async function start() {
     const db = mongoClient.db();
     const auditCollection = db.collection('audit_logs');
 
-    // Initialize Elasticsearch index (ignore if it exists)
+    // Initialize Elasticsearch index (ignore if exists)
     await esClient.indices.create(
       { index: 'audit-logs' },
       { ignore: [400] }
     );
+
+    // Kafka consumer for pull-based ingestion
+    const kafka = new Kafka({ brokers: ['localhost:9092'] });
+    const admin = kafka.admin();
+    await admin.connect();
+
+    await admin.createTopics({
+      topics: [{ topic: 'audit-events', numPartitions: 1, replicationFactor: 1 }],
+      waitForLeaders: true
+    });
+    await admin.disconnect();
+
+    // Kafka consumer
+    const consumer = kafka.consumer({ groupId: 'audit-service-group' });
+    await consumer.connect();
+    await consumer.subscribe({ topic: 'audit-events', fromBeginning: true });
+
+    await consumer.run({
+      eachMessage: async ({ message }) => {
+        try {
+          const event = JSON.parse(message.value.toString());
+          // Remove any existing _id to avoid duplicate key errors
+          delete event._id;
+          // Insert into MongoDB
+          const result = await auditCollection.insertOne(event);
+          const id = result.insertedId.toString();
+          // Index into Elasticsearch
+          await esClient.index({
+            index: 'audit-logs',
+            id,
+            document: event
+          });
+        } catch (err) {
+          console.error('Kafka processing error:', err);
+        }
+      }
+    });
 
     // POST /audit — ingest and index
     app.post('/audit', async (req, res) => {
@@ -29,34 +75,28 @@ async function start() {
       if (!timestamp || !service || !eventType || !userId) {
         return res.status(400).json({ error: 'Missing required fields' });
       }
-
       try {
-        // Write to MongoDB
         const result = await auditCollection.insertOne(req.body);
         const id = result.insertedId.toString();
-
-        // Write to Elasticsearch
         try {
           await esClient.index({
             index: 'audit-logs',
             id,
             document: req.body
           });
-        } catch (err) {
-          console.error('Elasticsearch indexing error:', err);
+        } catch (error) {
+          console.error('Elasticsearch indexing error:', error);
         }
-
         return res.status(201).json({ _id: id });
-      } catch (err) {
-        console.error('Insert error:', err);
+      } catch (error) {
+        console.error('Insert error:', error);
         return res.status(500).json({ error: 'Internal server error' });
       }
     });
 
-    // GET /logs — fetch paginated, filtered audit events
+    // GET /logs — fetch paginated, filtered events from MongoDB
     app.get('/logs', async (req, res) => {
       const { service, eventType, start, end, page = 1, limit = 20 } = req.query;
-
       const filter = {};
       if (service) filter.service = service;
       if (eventType) filter.eventType = eventType;
@@ -65,11 +105,9 @@ async function start() {
         if (start) filter.timestamp.$gte = new Date(start);
         if (end) filter.timestamp.$lte = new Date(end);
       }
-
       const pageNum = Math.max(1, parseInt(page, 10));
       const pageSize = Math.max(1, parseInt(limit, 10));
       const skip = (pageNum - 1) * pageSize;
-
       try {
         const total = await auditCollection.countDocuments(filter);
         const logs = await auditCollection
@@ -78,26 +116,62 @@ async function start() {
           .skip(skip)
           .limit(pageSize)
           .toArray();
-
         return res.json({ page: pageNum, limit: pageSize, total, logs });
-      } catch (err) {
-        console.error('Query error:', err);
+      } catch (error) {
+        console.error('Query error:', error);
+        return res.status(500).json({ error: 'Internal server error' });
+      }
+    });
+
+    // GET /logs/search — full-text search via Elasticsearch
+    app.get('/logs/search', async (req, res) => {
+      const { q, service, eventType, start, end, page = 1, limit = 20 } = req.query;
+      const must = [];
+      if (q) {
+        must.push({
+          multi_match: {
+            query: q,
+            fields: ['service', 'eventType', 'payload'],
+            fuzziness: 'AUTO'
+          }
+        });
+      }
+      if (service) must.push({ term: { service } });
+      if (eventType) must.push({ term: { eventType } });
+      if (start || end) {
+        const range = {};
+        if (start) range.gte = start;
+        if (end) range.lte = end;
+        must.push({ range: { timestamp: range } });
+      }
+      const pageNum = Math.max(1, parseInt(page, 10));
+      const pageSize = Math.max(1, parseInt(limit, 10));
+      const from = (pageNum - 1) * pageSize;
+      try {
+        const body = await esClient.search({
+          index: 'audit-logs',
+          from,
+          size: pageSize,
+          sort: [{ timestamp: 'desc' }],
+          body: { query: { bool: { must } } }
+        });
+        const total = body.hits.total.value;
+        const logs = body.hits.hits.map(hit => hit._source);
+        return res.json({ page: pageNum, limit: pageSize, total, logs });
+      } catch (error) {
+        console.error('Search error:', error);
         return res.status(500).json({ error: 'Internal server error' });
       }
     });
 
     // GET /health — liveness check
-    app.get('/health', (_req, res) => {
-      res.json({ status: 'ok' });
-    });
+    app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
     // Start server
     const PORT = process.env.PORT || 3000;
-    app.listen(PORT, () => {
-      console.log(`🚀 Listening on port ${PORT}`);
-    });
-  } catch (err) {
-    console.error('Failed to start service:', err);
+    app.listen(PORT, () => console.log(`🚀 Listening on port ${PORT}`));
+  } catch (error) {
+    console.error('Failed to start service:', error);
     process.exit(1);
   }
 }
