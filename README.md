@@ -188,3 +188,8 @@ curl.exe "http://localhost:3000/logs/search?q=test&service=test&page=1&limit=5"
 3. Search it:
    curl "http://localhost:3000/logs/search?q=<yourEventType>"
 
+## Validation & Dead-Letter Handling
+
+- Incoming events (HTTP & Kafka) are validated against a JSON schema.
+- Malformed events are rejected (HTTP 400) or skipped (Kafka) and stored in `audit_dead_letters`.
+- Those records include the raw payload, validation errors, and timestamp.

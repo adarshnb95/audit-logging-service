@@ -3,7 +3,11 @@ import dotenv from 'dotenv';
 import { MongoClient } from 'mongodb';
 import { Client as ESClient } from '@elastic/elasticsearch';
 import { Kafka } from 'kafkajs';
+import Ajv from "ajv";
+import auditEventSchema from "./schema/auditEvent.json";
 
+const ajv = new Ajv({ allErrors: true });
+const validateEvent = ajv.compile(auditEventSchema);
 dotenv.config();
 const app = express();
 app.use(express.json());
@@ -54,8 +58,24 @@ async function start() {
           const event = JSON.parse(message.value.toString());
           // Remove any existing _id to avoid duplicate key errors
           delete event._id;
+          // Validate the event against the schema
+          // If validation fails, write to a dead-letter collection
+          if (!validateEvent(event)) {
+            await auditCollection.db.collection("audit_dead_letters").insertOne({
+              error: validateEvent.errors,
+              event,
+              receivedAt: new Date()
+            });
+            return; // skip indexing
+          }
           // Insert into MongoDB
           const result = await auditCollection.insertOne(event);
+          // If the insert was successful, index into Elasticsearch
+          // Create a TTL index on the dead-letter collection
+          await db.collection("audit_dead_letters").createIndex(
+            { receivedAt: 1 },
+            { expireAfterSeconds: 60 * 60 * 24 * 7 } // one week
+          );
           const id = result.insertedId.toString();
           // Index into Elasticsearch
           await esClient.index({
@@ -74,6 +94,16 @@ async function start() {
       const { timestamp, service, eventType, userId, payload } = req.body;
       if (!timestamp || !service || !eventType || !userId) {
         return res.status(400).json({ error: 'Missing required fields' });
+      }
+      const valid = validateEvent(req.body);
+      if (!valid) {
+        // write the bad payload + errors to a dead-letter colln
+        await db.collection("audit_dead_letters").insertOne({
+          error: validateEvent.errors,
+          event: req.body,
+          receivedAt: new Date()
+        });
+        return res.status(400).json({ error: "Invalid payload", details: validateEvent.errors });
       }
       try {
         const result = await auditCollection.insertOne(req.body);
