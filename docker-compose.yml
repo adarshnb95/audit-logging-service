@@ -4,7 +4,7 @@ services:
   app:
     build: .
     ports:
-      - '3000:3000'
+      - '3001:3000'
     env_file:
       - .env
     depends_on:
@@ -42,7 +42,7 @@ services:
 
       # Listener definitions
       - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
-      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
       - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://localhost:9092
 
     ports:

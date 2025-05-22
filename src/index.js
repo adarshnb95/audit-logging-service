@@ -6,6 +6,7 @@ import { Kafka } from 'kafkajs';
 import Ajv from "ajv";
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
+import addFormats from 'ajv-formats';
 
 // Resolve the JSON file path
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
@@ -16,6 +17,7 @@ const auditEventSchema = JSON.parse(readFileSync(schemaPath, 'utf-8'));
 
 
 const ajv = new Ajv({ allErrors: true });
+addFormats(ajv);
 const validateEvent = ajv.compile(auditEventSchema);
 dotenv.config();
 const app = express();
@@ -31,6 +33,24 @@ const esClient = new ESClient({ node: process.env.ES_NODE || 'http://localhost:9
   sniffOnConnectionFault: false,
   sniffInterval: false
   });
+await esClient.cluster.health({ wait_for_status: 'yellow', timeout: '30s' });
+
+// Initialize Elasticsearch index (ignore if exists)
+await esClient.indices.delete({ index: 'audit-logs' }, { ignore: [404] });
+await esClient.indices.create({
+  index: 'audit-logs',
+  body: {
+    mappings: {
+      properties: {
+        timestamp: { type: 'date' },
+        service:   { type: 'keyword' },
+        eventType: { type: 'keyword' },
+        userId:    { type: 'keyword' },
+        payload:   { type: 'object' }
+      }
+    }
+  }
+});
 
 async function start() {
   try {
@@ -38,12 +58,10 @@ async function start() {
     await mongoClient.connect();
     const db = mongoClient.db();
     const auditCollection = db.collection('audit_logs');
+    await db.collection('audit_dead_letters')
+    .createIndex({ receivedAt: 1 }, { expireAfterSeconds: 60*60*24*7 });
 
-    // Initialize Elasticsearch index (ignore if exists)
-    await esClient.indices.create(
-      { index: 'audit-logs' },
-      { ignore: [400] }
-    );
+    
 
     // Kafka consumer for pull-based ingestion
     const kafka = new Kafka({ brokers: ['localhost:9092'] });
@@ -60,6 +78,7 @@ async function start() {
     const consumer = kafka.consumer({ groupId: 'audit-service-group' });
     await consumer.connect();
     await consumer.subscribe({ topic: 'audit-events', fromBeginning: true });
+    
 
     await consumer.run({
       eachMessage: async ({ message }) => {
@@ -70,7 +89,7 @@ async function start() {
           // Validate the event against the schema
           // If validation fails, write to a dead-letter collection
           if (!validateEvent(event)) {
-            await auditCollection.db.collection("audit_dead_letters").insertOne({
+              await db.collection("audit_dead_letters").insertOne({
               error: validateEvent.errors,
               event,
               receivedAt: new Date()
@@ -81,17 +100,20 @@ async function start() {
           const result = await auditCollection.insertOne(event);
           // If the insert was successful, index into Elasticsearch
           // Create a TTL index on the dead-letter collection
-          await db.collection("audit_dead_letters").createIndex(
-            { receivedAt: 1 },
-            { expireAfterSeconds: 60 * 60 * 24 * 7 } // one week
-          );
+          
           const id = result.insertedId.toString();
+          const { _id, ...doc } = event;
           // Index into Elasticsearch
-          await esClient.index({
-            index: 'audit-logs',
-            id,
-            document: event
-          });
+          try {
+            await esClient.index({
+              index: 'audit-logs',
+              id,
+              document: doc,
+              refresh: 'wait_for'
+            });
+          } catch (esErr) {
+              console.error('ES index failed:', esErr.meta?.body?.error || esErr);
+            }
         } catch (err) {
           console.error('Kafka processing error:', err);
         }
@@ -117,11 +139,13 @@ async function start() {
       try {
         const result = await auditCollection.insertOne(req.body);
         const id = result.insertedId.toString();
+        const { _id, ...doc } = req.body;
         try {
           await esClient.index({
             index: 'audit-logs',
             id,
-            document: req.body
+            document: doc,
+            refresh: 'wait_for'
           });
         } catch (error) {
           console.error('Elasticsearch indexing error:', error);
@@ -187,16 +211,23 @@ async function start() {
       const pageSize = Math.max(1, parseInt(limit, 10));
       const from = (pageNum - 1) * pageSize;
       try {
-        const body = await esClient.search({
+        const result = await esClient.search({
           index: 'audit-logs',
           from,
           size: pageSize,
           sort: [{ timestamp: 'desc' }],
           body: { query: { bool: { must } } }
         });
-        const total = body.hits.total.value;
-        const logs = body.hits.hits.map(hit => hit._source);
+        
+        const searchBody = result.body ?? result;               // support both styles
+        if (!searchBody.hits) {
+          console.error('Bad ES response:', result);
+          return res.status(500).json({ error: 'Invalid search response' });
+        }
+        const total = searchBody.hits.total.value;
+        const logs  = searchBody.hits.hits.map(h => h._source);
         return res.json({ page: pageNum, limit: pageSize, total, logs });
+
       } catch (error) {
         console.error('Search error:', error);
         return res.status(500).json({ error: 'Internal server error' });

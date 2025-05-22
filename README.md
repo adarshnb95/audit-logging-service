@@ -46,7 +46,7 @@ This service provides:
 
 2. **Install dependencies**
 ```bash
-    npm install
+   npm install
 ```
 
 3. **Configure environment**
@@ -177,23 +177,23 @@ curl.exe "http://localhost:3000/logs/search?q=test&service=test&page=1&limit=5"
 ## Kafka Ingestion
 
 1. Start Zookeeper & Kafka via Docker Compose:
-   ```bash
+```bash
    docker-compose up -d zookeeper kafka
-   ```
+```
 
 2. Produce an audit event:
-   ```bash
+```bash
    echo '{"timestamp":"…","service":"…","eventType":"…","userId":"…","payload":{}}' \
-  | docker exec -i kafka \
+      | docker exec -i kafka \
       /opt/bitnami/kafka/bin/kafka-console-producer.sh \
         --bootstrap-server localhost:9092 \
         --topic audit-events
-   ```
+```
 
 3. Search it:
-   ```bash
+```bash
    curl "http://localhost:3000/logs/search?q=<yourEventType>"
-   ```
+```
 
 ## Validation & Dead-Letter Handling
 
