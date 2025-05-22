@@ -1,0 +1,14 @@
+{
+    "$id": "https://your.domain/schemas/auditEvent.json",
+    "type": "object",
+    "required": ["timestamp","service","eventType","userId","payload"],
+    "properties": {
+      "timestamp": { "type": "string", "format": "date-time" },
+      "service":   { "type": "string" },
+      "eventType": { "type": "string" },
+      "userId":    { "type": "string" },
+      "payload":   { "type": "object" }
+    },
+    "additionalProperties": false
+  }
+  
