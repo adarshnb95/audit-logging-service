@@ -4,7 +4,16 @@ import { MongoClient } from 'mongodb';
 import { Client as ESClient } from '@elastic/elasticsearch';
 import { Kafka } from 'kafkajs';
 import Ajv from "ajv";
-import auditEventSchema from "./schema/auditEvent.json";
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+
+// Resolve the JSON file path
+const __dirname = fileURLToPath(new URL('.', import.meta.url));
+const schemaPath = new URL('./schema/auditEvent.json', import.meta.url);
+
+// Load & parse
+const auditEventSchema = JSON.parse(readFileSync(schemaPath, 'utf-8'));
+
 
 const ajv = new Ajv({ allErrors: true });
 const validateEvent = ajv.compile(auditEventSchema);

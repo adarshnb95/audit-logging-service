@@ -48,29 +48,44 @@ Describe "Audit-Logging Service Tests" {
 
   Context "Kafka ingestion & search" {
     BeforeAll {
-      # Base URL for API
-      $baseUrl = 'http://localhost:3000'
-      # Produce a test message into Kafka
-      $msg = @{ 
+      # Produce a valid test message into Kafka
+      $validMsg = @{ 
         timestamp = (Get-Date).ToString("o");
         service   = "pester-kafka";
-        eventType = "KAFKA_TEST";
+        eventType = "KAFKA_VALID";
         userId    = "tester";
         payload   = @{ x = "y" }
       } | ConvertTo-Json -Compress
 
-      $msg | docker exec -i kafka /opt/bitnami/kafka/bin/kafka-console-producer.sh `
+      $validMsg | docker exec -i kafka /opt/bitnami/kafka/bin/kafka-console-producer.sh `
         --bootstrap-server localhost:9092 --topic audit-events
+      Start-Sleep -Seconds 2
 
-      # Give the consumer a moment to process
+      # Produce an invalid test message into Kafka
+      $invalidMsg = @{ 
+        service   = "pester-kafka";
+        eventType = "KAFKA_INVALID";
+        userId    = "tester";
+        payload   = @{ x = "z" }
+      } | ConvertTo-Json -Compress
+
+      $invalidMsg | docker exec -i kafka /opt/bitnami/kafka/bin/kafka-console-producer.sh `
+        --bootstrap-server localhost:9092 --topic audit-events
       Start-Sleep -Seconds 2
     }
 
-    It "should find the Kafka-produced event via /logs/search" {
-      $uri = "${baseUrl}/logs/search?q=KAFKA_TEST"
+    It "should find the valid Kafka-produced event via /logs/search" {
+      $uri = "${baseUrl}/logs/search?eventType=KAFKA_VALID"
       Write-Host "Calling API at $uri"
       $search = Invoke-RestMethod -Uri $uri -TimeoutSec 5
-      $search.logs | Where-Object { $_.eventType -eq "KAFKA_TEST" } | Should -Not -BeNullOrEmpty
+      $search.logs | Where-Object { $_.eventType -eq "KAFKA_VALID" } | Should -Not -BeNullOrEmpty
+    }
+
+    It "should not index invalid Kafka messages" {
+      $uri = "${baseUrl}/logs/search?eventType=KAFKA_INVALID"
+      Write-Host "Calling API at $uri"
+      $search = Invoke-RestMethod -Uri $uri -TimeoutSec 5
+      $search.logs | Should -BeNullOrEmpty
     }
   }
 }
